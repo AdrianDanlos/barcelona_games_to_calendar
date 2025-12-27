@@ -147,15 +147,28 @@ class GoogleCalendarService:
         try:
             # List existing calendars
             calendar_list = self.service.calendarList().list().execute()
+            calendars = calendar_list.get('items', [])
+            
+            logger.info(f"Searching for calendar: '{calendar_name}'")
+            logger.info(f"Found {len(calendars)} calendar(s) accessible to service account")
+            
+            # Log all calendar names for debugging
+            if calendars:
+                logger.info("Available calendars:")
+                for cal in calendars:
+                    logger.info(f"  - '{cal.get('summary', 'N/A')}' (ID: {cal.get('id', 'N/A')[:20]}...)")
             
             # Check if calendar already exists
-            for calendar_entry in calendar_list.get('items', []):
+            for calendar_entry in calendars:
                 if calendar_entry['summary'] == calendar_name:
                     calendar_id = calendar_entry['id']
-                    logger.info(f"Found existing calendar: {calendar_name} ({calendar_id})")
+                    logger.info(f"✓ Found existing calendar: '{calendar_name}' (ID: {calendar_id})")
                     return calendar_id
             
-            # Create new calendar if it doesn't exist
+            # Calendar not found - create new one
+            logger.warning(f"Calendar '{calendar_name}' not found in service account's accessible calendars.")
+            logger.warning("This usually means the calendar hasn't been shared with the service account.")
+            logger.info(f"Creating new calendar '{calendar_name}' (owned by service account - you may not see it)")
             calendar = {
                 'summary': calendar_name,
                 'description': 'Barcelona FC football matches automatically synced',
@@ -163,7 +176,8 @@ class GoogleCalendarService:
             }
             created_calendar = self.service.calendars().insert(body=calendar).execute()
             calendar_id = created_calendar['id']
-            logger.info(f"Created new calendar: {calendar_name} ({calendar_id})")
+            logger.warning(f"⚠ Created new calendar '{calendar_name}' with ID: {calendar_id}")
+            logger.warning("⚠ NOTE: If you don't see events, make sure to share your calendar with the service account email!")
             return calendar_id
             
         except HttpError as error:
@@ -308,20 +322,28 @@ def sync_barcelona_fixtures():
         logger.warning("No fixtures found. Check API key and connection.")
         return
     
+    logger.info(f"Processing {len(fixtures)} fixture(s)...")
+    
     # Process and add fixtures to calendar
     added_count = 0
-    skipped_count = 0
+    past_count = 0
+    invalid_date_count = 0
+    
+    current_time = datetime.now(timezone.utc)
+    logger.info(f"Current time (UTC): {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
     
     for fixture in fixtures:
         # Only process future matches
         match_date = parse_fixture_datetime(fixture)
         if not match_date:
-            skipped_count += 1
+            invalid_date_count += 1
+            logger.debug(f"Skipping fixture with invalid date: {fixture.get('homeTeam', {}).get('name', '?')} vs {fixture.get('awayTeam', {}).get('name', '?')}")
             continue
         
         # Only add future matches
-        if match_date < datetime.now(timezone.utc):
-            skipped_count += 1
+        if match_date < current_time:
+            past_count += 1
+            logger.debug(f"Skipping past match: {format_fixture_title(fixture)} on {match_date.strftime('%Y-%m-%d %H:%M')}")
             continue
         
         title = format_fixture_title(fixture)
@@ -342,9 +364,26 @@ def sync_barcelona_fixtures():
         if event_id:
             added_count += 1
         else:
-            skipped_count += 1
+            # Event already exists or failed to add
+            pass
     
-    logger.info(f"Sync complete! Added {added_count} new events, skipped {skipped_count} existing/past events")
+    logger.info("=" * 60)
+    logger.info(f"Sync Summary:")
+    logger.info(f"  - Total fixtures fetched: {len(fixtures)}")
+    logger.info(f"  - Events added: {added_count}")
+    logger.info(f"  - Past matches skipped: {past_count}")
+    logger.info(f"  - Invalid date skipped: {invalid_date_count}")
+    skipped_total = len(fixtures) - added_count
+    existing_skipped = skipped_total - past_count - invalid_date_count
+    if existing_skipped > 0:
+        logger.info(f"  - Already existing skipped: {existing_skipped}")
+    logger.info("=" * 60)
+    
+    if added_count == 0 and past_count > 0:
+        logger.warning("⚠ No events added because all matches are in the past!")
+        logger.info("This is normal if it's late in the season. New fixtures will appear when they're scheduled.")
+    elif added_count == 0:
+        logger.warning("⚠ No events were added. Check the logs above for details.")
 
 
 if __name__ == '__main__':
