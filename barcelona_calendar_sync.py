@@ -221,34 +221,41 @@ class GoogleCalendarService:
                     return calendar_id
                 else:
                     # All matching calendars are owned by service account
-                    # Delete the service-account-owned calendar and create a new one
+                    # This is fine - we can use it! Just make sure it's shared with the user
                     calendar_entry = matching_calendars[0]
-                    old_calendar_id = calendar_entry['id']
-                    logger.warning(f"⚠ Found calendar '{calendar_name}' but service account is the OWNER!")
-                    logger.warning(f"⚠ Deleting old service-account-owned calendar and creating a new one...")
-                    try:
-                        # Delete the old calendar
-                        self.service.calendars().delete(calendarId=old_calendar_id).execute()
-                        logger.info(f"✓ Deleted old calendar: {old_calendar_id[:50]}...")
-                    except HttpError as e:
-                        logger.warning(f"Could not delete old calendar: {e}")
-                        # Continue anyway - we'll create a new calendar with a different approach
+                    calendar_id = calendar_entry['id']
+                    logger.info(f"✓ Found calendar '{calendar_name}' owned by service account (ID: {calendar_id[:50]}...)")
+                    logger.info(f"  This is expected - service account will manage this calendar")
                     
-                    # Fall through to create a new calendar
-                    # Note: We can't create a calendar and have the user own it via API
-                    # The user needs to create it and share it
-                    email = self.service_account_email or 'your-service-account-email@project.iam.gserviceaccount.com'
-                    logger.error(f"❌ Calendar '{calendar_name}' is owned by service account.")
-                    logger.error(f"❌")
-                    logger.error(f"❌ SOLUTION:")
-                    logger.error(f"❌ 1. Create a NEW calendar in Google Calendar (name it: '{calendar_name}')")
-                    logger.error(f"❌ 2. Share it with this email: {email}")
-                    logger.error(f"❌ 3. Give 'Make changes to events' permission")
-                    logger.error(f"❌ 4. Update CALENDAR_NAME secret in GitHub to match exactly")
-                    logger.error(f"❌ 5. Run this workflow again")
-                    logger.error(f"❌")
-                    logger.error(f"❌ The old calendar will be deleted automatically next run.")
-                    raise ValueError(f"Calendar '{calendar_name}' is owned by service account. Please create and share a calendar manually.")
+                    # Make sure calendar is shared with user email if provided
+                    user_email = os.getenv('USER_EMAIL', '')
+                    if user_email:
+                        try:
+                            # Check if already shared
+                            acl_list = self.service.acl().list(calendarId=calendar_id).execute()
+                            shared_with_user = any(
+                                entry.get('scope', {}).get('value') == user_email 
+                                for entry in acl_list.get('items', [])
+                            )
+                            
+                            if not shared_with_user:
+                                logger.info(f"Sharing calendar with: {user_email}")
+                                acl_rule = {
+                                    'scope': {
+                                        'type': 'user',
+                                        'value': user_email
+                                    },
+                                    'role': 'owner'  # Give owner so user can see and manage it
+                                }
+                                self.service.acl().insert(calendarId=calendar_id, body=acl_rule).execute()
+                                logger.info(f"✓ Shared calendar with: {user_email}")
+                            else:
+                                logger.info(f"Calendar already shared with: {user_email}")
+                        except Exception as e:
+                            logger.warning(f"Could not share calendar with {user_email}: {e}")
+                            logger.warning(f"Calendar is created but may not be visible to you. Calendar ID: {calendar_id}")
+                    
+                    return calendar_id
             
             # Calendar not found - create it with service account and share with user
             logger.warning(f"Calendar '{calendar_name}' not found. Creating new calendar...")
