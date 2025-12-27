@@ -161,6 +161,17 @@ class GoogleCalendarService:
         self.service = build('calendar', 'v3', credentials=creds)
         logger.info("Successfully authenticated with Google Calendar API")
     
+    def _load_service_account_email(self):
+        """Load service account email from credentials file"""
+        try:
+            if self.service_account_file and os.path.exists(self.service_account_file):
+                with open(self.service_account_file, 'r') as f:
+                    creds_data = json.load(f)
+                    self.service_account_email = creds_data.get('client_email', '')
+                    logger.info(f"Service account email: {self.service_account_email}")
+        except Exception as e:
+            logger.debug(f"Could not load service account email: {e}")
+    
     def get_or_create_calendar(self, calendar_name: str) -> str:
         """Get existing calendar ID or create a new calendar"""
         try:
@@ -195,15 +206,35 @@ class GoogleCalendarService:
                     logger.info(f"  Calendar timezone: {calendar_entry.get('timeZone', 'unknown')}")
                     return calendar_id
                 else:
-                    # All matching calendars are owned by service account - warn user
+                    # All matching calendars are owned by service account
+                    # Delete the service-account-owned calendar and create a new one
                     calendar_entry = matching_calendars[0]
-                    calendar_id = calendar_entry['id']
+                    old_calendar_id = calendar_entry['id']
                     logger.warning(f"⚠ Found calendar '{calendar_name}' but service account is the OWNER!")
-                    logger.warning(f"⚠ This means the service account created this calendar, not your actual calendar.")
-                    logger.warning(f"⚠ Please share your calendar '{calendar_name}' with the service account email.")
-                    logger.warning(f"⚠ Then delete this calendar: {calendar_id}")
-                    logger.info(f"Using calendar (ID: {calendar_id[:50]}...) but events won't be visible to you!")
-                    return calendar_id
+                    logger.warning(f"⚠ Deleting old service-account-owned calendar and creating a new one...")
+                    try:
+                        # Delete the old calendar
+                        self.service.calendars().delete(calendarId=old_calendar_id).execute()
+                        logger.info(f"✓ Deleted old calendar: {old_calendar_id[:50]}...")
+                    except HttpError as e:
+                        logger.warning(f"Could not delete old calendar: {e}")
+                        # Continue anyway - we'll create a new calendar with a different approach
+                    
+                    # Fall through to create a new calendar
+                    # Note: We can't create a calendar and have the user own it via API
+                    # The user needs to create it and share it
+                    email = self.service_account_email or 'your-service-account-email@project.iam.gserviceaccount.com'
+                    logger.error(f"❌ Calendar '{calendar_name}' is owned by service account.")
+                    logger.error(f"❌")
+                    logger.error(f"❌ SOLUTION:")
+                    logger.error(f"❌ 1. Create a NEW calendar in Google Calendar (name it: '{calendar_name}')")
+                    logger.error(f"❌ 2. Share it with this email: {email}")
+                    logger.error(f"❌ 3. Give 'Make changes to events' permission")
+                    logger.error(f"❌ 4. Update CALENDAR_NAME secret in GitHub to match exactly")
+                    logger.error(f"❌ 5. Run this workflow again")
+                    logger.error(f"❌")
+                    logger.error(f"❌ The old calendar will be deleted automatically next run.")
+                    raise ValueError(f"Calendar '{calendar_name}' is owned by service account. Please create and share a calendar manually.")
             
             # Calendar not found - create new one
             logger.warning(f"Calendar '{calendar_name}' not found in service account's accessible calendars.")
