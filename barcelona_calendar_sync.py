@@ -71,20 +71,39 @@ class FootballAPIClient:
                 logger.info(f"Successfully fetched {len(fixtures)} fixtures")
                 return fixtures
             elif response.status_code == 403:
-                logger.warning("API key may be required or invalid. Using free tier limits.")
+                logger.warning("API returned 403. Trying without auth headers for free tier...")
                 # Try without auth for free tier (limited requests)
-                response = requests.get(url, params=params, timeout=10)
-                if response.status_code == 200:
-                    data = response.json()
+                response_no_auth = requests.get(url, params=params, timeout=10)
+                logger.info(f"Response status (no auth): {response_no_auth.status_code}")
+                if response_no_auth.status_code == 200:
+                    data = response_no_auth.json()
+                    logger.info(f"API response keys: {list(data.keys())}")
                     fixtures = data.get('matches', [])
-                    logger.info(f"Fetched {len(fixtures)} fixtures (free tier)")
-                    return fixtures
+                    if fixtures:
+                        logger.info(f"Fetched {len(fixtures)} fixtures (free tier)")
+                        return fixtures
+                    else:
+                        logger.warning(f"API returned 200 but no fixtures. Response structure: {list(data.keys())}")
+                        logger.warning(f"Response sample: {str(data)[:300]}")
+                        # Check if there are other fields
+                        if 'results' in data:
+                            fixtures = data.get('results', [])
+                            if fixtures:
+                                logger.info(f"Found fixtures in 'results' field: {len(fixtures)}")
+                                return fixtures
+                elif response_no_auth.status_code == 429:
+                    logger.error("Rate limit exceeded. Please wait before trying again.")
+                else:
+                    logger.error(f"API request failed with status {response_no_auth.status_code}")
+                    logger.error(f"Response: {response_no_auth.text[:300]}")
+            elif response.status_code == 429:
+                logger.error("Rate limit exceeded (429). Please wait before trying again.")
             else:
-                logger.error(f"API request failed with status {response.status_code}: {response.text}")
+                logger.error(f"API request failed with status {response.status_code}: {response.text[:500]}")
                 return []
                 
         except Exception as e:
-            logger.error(f"Error fetching fixtures: {str(e)}")
+            logger.error(f"Error fetching fixtures: {str(e)}", exc_info=True)
             return []
 
 
