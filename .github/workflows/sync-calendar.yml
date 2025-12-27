@@ -36,6 +36,7 @@ jobs:
           GOOGLE_SERVICE_ACCOUNT_FILE: service_account.json
           FOOTBALL_API_KEY: ${{ secrets.FOOTBALL_API_KEY }}
           CALENDAR_NAME: ${{ secrets.CALENDAR_NAME }}
+          USER_EMAIL: ${{ secrets.USER_EMAIL }}
         run: |
           python barcelona_calendar_sync.py
       

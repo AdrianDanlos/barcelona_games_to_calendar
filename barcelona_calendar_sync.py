@@ -39,6 +39,7 @@ BARCELONA_TEAM_ID = 81
 CALENDAR_NAME = os.getenv('CALENDAR_NAME') or 'Barcelona FC Games'
 FOOTBALL_API_KEY = os.getenv('FOOTBALL_API_KEY', '')
 FOOTBALL_API_BASE = os.getenv('FOOTBALL_API_BASE', 'https://api.football-data.org/v4')
+USER_EMAIL = os.getenv('USER_EMAIL', '')  # Email to share the calendar with (optional)
 
 
 class FootballAPIClient:
@@ -247,24 +248,42 @@ class GoogleCalendarService:
                     logger.error(f"❌ The old calendar will be deleted automatically next run.")
                     raise ValueError(f"Calendar '{calendar_name}' is owned by service account. Please create and share a calendar manually.")
             
-            # Calendar not found - don't create, give clear error
-            email = self.service_account_email or 'barcelona-calendar-sync@barcelona-calendar-sync-482516.iam.gserviceaccount.com'
-            logger.error(f"❌ Calendar '{calendar_name}' not found in service account's accessible calendars.")
-            logger.error(f"❌")
-            logger.error(f"❌ The service account can see {len(calendars)} calendar(s), but none match '{calendar_name}'")
-            logger.error(f"❌")
-            logger.error(f"❌ SOLUTION:")
-            logger.error(f"❌ 1. Make sure your calendar is named exactly: '{calendar_name}'")
-            logger.error(f"❌ 2. Share it with this email: {email}")
-            logger.error(f"❌ 3. Give 'Make changes to events' permission")
-            logger.error(f"❌ 4. Check the CALENDAR_NAME secret matches exactly (case-sensitive)")
-            logger.error(f"❌")
-            logger.error(f"❌ Current CALENDAR_NAME value: '{calendar_name}' (length: {len(calendar_name)})")
-            if calendars:
-                logger.error(f"❌ Calendars the service account CAN see:")
-                for cal in calendars:
-                    logger.error(f"❌   - '{cal.get('summary', 'N/A')}'")
-            raise ValueError(f"Calendar '{calendar_name}' not found. Service account cannot see it. Please share your calendar.")
+            # Calendar not found - create it with service account and share with user
+            logger.warning(f"Calendar '{calendar_name}' not found. Creating new calendar...")
+            logger.info(f"Note: Service accounts can't always see calendars shared with them.")
+            logger.info(f"Creating calendar owned by service account, then sharing it with your email.")
+            
+            calendar = {
+                'summary': calendar_name,
+                'description': 'Barcelona FC football matches automatically synced',
+                'timeZone': 'Europe/Madrid'
+            }
+            created_calendar = self.service.calendars().insert(body=calendar).execute()
+            calendar_id = created_calendar['id']
+            logger.info(f"✓ Created calendar '{calendar_name}' (ID: {calendar_id[:50]}...)")
+            
+            # Share calendar with user email if provided
+            user_email = os.getenv('USER_EMAIL', '')
+            if user_email:
+                try:
+                    acl_rule = {
+                        'scope': {
+                            'type': 'user',
+                            'value': user_email
+                        },
+                        'role': 'owner'  # Give owner so user can see and manage it
+                    }
+                    self.service.acl().insert(calendarId=calendar_id, body=acl_rule).execute()
+                    logger.info(f"✓ Shared calendar with: {user_email}")
+                except Exception as e:
+                    logger.warning(f"Could not share calendar with {user_email}: {e}")
+                    logger.warning(f"You may need to manually access this calendar using its ID")
+            else:
+                logger.warning(f"⚠ USER_EMAIL not set. Calendar created but may not be visible to you.")
+                logger.warning(f"⚠ Add USER_EMAIL secret in GitHub Actions to share calendar automatically.")
+                logger.warning(f"⚠ Calendar ID: {calendar_id}")
+            
+            return calendar_id
             
         except HttpError as error:
             logger.error(f"Error managing calendar: {error}")
