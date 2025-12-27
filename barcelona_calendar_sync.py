@@ -185,6 +185,7 @@ class GoogleCalendarService:
             calendars = calendar_list.get('items', [])
             
             logger.info(f"Searching for calendar: '{calendar_name}'")
+            logger.info(f"Calendar name length: {len(calendar_name)} characters")
             logger.info(f"Found {len(calendars)} calendar(s) accessible to service account")
             
             # Log all calendar names for debugging
@@ -194,6 +195,11 @@ class GoogleCalendarService:
                     access_role = cal.get('accessRole', 'unknown')
                     cal_name = cal.get('summary', 'N/A')
                     logger.info(f"  - '{cal_name}' (Role: {access_role}, ID: {cal.get('id', 'N/A')[:30]}...)")
+            else:
+                logger.warning("⚠ No calendars found! Service account cannot see any calendars.")
+                logger.warning("⚠ Make sure you've shared your calendar with the service account email:")
+                email = self.service_account_email or 'barcelona-calendar-sync@barcelona-calendar-sync-482516.iam.gserviceaccount.com'
+                logger.warning(f"⚠   {email}")
             
             # Check if calendar already exists
             # Prefer calendars where service account is NOT the owner (meaning it's a shared calendar from the user)
@@ -241,20 +247,24 @@ class GoogleCalendarService:
                     logger.error(f"❌ The old calendar will be deleted automatically next run.")
                     raise ValueError(f"Calendar '{calendar_name}' is owned by service account. Please create and share a calendar manually.")
             
-            # Calendar not found - create new one
-            logger.warning(f"Calendar '{calendar_name}' not found in service account's accessible calendars.")
-            logger.warning("This usually means the calendar hasn't been shared with the service account.")
-            logger.info(f"Creating new calendar '{calendar_name}' (owned by service account - you may not see it)")
-            calendar = {
-                'summary': calendar_name,
-                'description': 'Barcelona FC football matches automatically synced',
-                'timeZone': 'Europe/Madrid'
-            }
-            created_calendar = self.service.calendars().insert(body=calendar).execute()
-            calendar_id = created_calendar['id']
-            logger.warning(f"⚠ Created new calendar '{calendar_name}' with ID: {calendar_id}")
-            logger.warning("⚠ NOTE: If you don't see events, make sure to share your calendar with the service account email!")
-            return calendar_id
+            # Calendar not found - don't create, give clear error
+            email = self.service_account_email or 'barcelona-calendar-sync@barcelona-calendar-sync-482516.iam.gserviceaccount.com'
+            logger.error(f"❌ Calendar '{calendar_name}' not found in service account's accessible calendars.")
+            logger.error(f"❌")
+            logger.error(f"❌ The service account can see {len(calendars)} calendar(s), but none match '{calendar_name}'")
+            logger.error(f"❌")
+            logger.error(f"❌ SOLUTION:")
+            logger.error(f"❌ 1. Make sure your calendar is named exactly: '{calendar_name}'")
+            logger.error(f"❌ 2. Share it with this email: {email}")
+            logger.error(f"❌ 3. Give 'Make changes to events' permission")
+            logger.error(f"❌ 4. Check the CALENDAR_NAME secret matches exactly (case-sensitive)")
+            logger.error(f"❌")
+            logger.error(f"❌ Current CALENDAR_NAME value: '{calendar_name}' (length: {len(calendar_name)})")
+            if calendars:
+                logger.error(f"❌ Calendars the service account CAN see:")
+                for cal in calendars:
+                    logger.error(f"❌   - '{cal.get('summary', 'N/A')}'")
+            raise ValueError(f"Calendar '{calendar_name}' not found. Service account cannot see it. Please share your calendar.")
             
         except HttpError as error:
             logger.error(f"Error managing calendar: {error}")
