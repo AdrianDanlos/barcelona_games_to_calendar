@@ -39,7 +39,7 @@ BARCELONA_TEAM_ID = 81
 CALENDAR_NAME = os.getenv('CALENDAR_NAME') or 'Barcelona FC Games'
 FOOTBALL_API_KEY = os.getenv('FOOTBALL_API_KEY', '')
 FOOTBALL_API_BASE = os.getenv('FOOTBALL_API_BASE', 'https://api.football-data.org/v4')
-USER_EMAIL = os.getenv('USER_EMAIL', '')  # Email to share the calendar with (optional)
+USER_EMAIL = os.getenv('USER_EMAIL', '')
 
 
 class FootballAPIClient:
@@ -53,19 +53,10 @@ class FootballAPIClient:
             self.headers['X-Auth-Token'] = api_key
     
     def get_barcelona_fixtures(self, limit: int = 100) -> List[Dict]:
-        """
-        Fetch Barcelona fixtures from the API
-        Returns a list of fixture dictionaries (includes all competitions)
-        """
+        """Fetch Barcelona fixtures from the API"""
         try:
-            # Try to get Barcelona fixtures
-            # Using football-data.org API format
-            # Note: This endpoint returns matches from all competitions (league, cups, etc.)
             url = f"{self.api_base}/teams/{BARCELONA_TEAM_ID}/matches"
-            # Don't filter by status - we want all matches (past and future) so we can filter by date ourselves
             params = {'limit': limit}
-            
-            logger.info(f"Fetching fixtures from {url} (limit: {limit})")
             response = requests.get(url, headers=self.headers, params=params, timeout=10)
             
             if response.status_code == 200:
@@ -74,31 +65,16 @@ class FootballAPIClient:
                 logger.info(f"Successfully fetched {len(fixtures)} fixtures")
                 return fixtures
             elif response.status_code == 403:
-                logger.warning("API returned 403. Trying without auth headers for free tier...")
-                # Try without auth for free tier (limited requests)
+                logger.warning("API returned 403. Trying without auth for free tier...")
                 response_no_auth = requests.get(url, params=params, timeout=10)
-                logger.info(f"Response status (no auth): {response_no_auth.status_code}")
                 if response_no_auth.status_code == 200:
                     data = response_no_auth.json()
-                    logger.info(f"API response keys: {list(data.keys())}")
                     fixtures = data.get('matches', [])
                     if fixtures:
                         logger.info(f"Fetched {len(fixtures)} fixtures (free tier)")
                         return fixtures
-                    else:
-                        logger.warning(f"API returned 200 but no fixtures. Response structure: {list(data.keys())}")
-                        logger.warning(f"Response sample: {str(data)[:300]}")
-                        # Check if there are other fields
-                        if 'results' in data:
-                            fixtures = data.get('results', [])
-                            if fixtures:
-                                logger.info(f"Found fixtures in 'results' field: {len(fixtures)}")
-                                return fixtures
                 elif response_no_auth.status_code == 429:
                     logger.error("Rate limit exceeded. Please wait before trying again.")
-                else:
-                    logger.error(f"API request failed with status {response_no_auth.status_code}")
-                    logger.error(f"Response: {response_no_auth.text[:300]}")
             elif response.status_code == 429:
                 logger.error("Rate limit exceeded (429). Please wait before trying again.")
             else:
@@ -188,74 +164,30 @@ class GoogleCalendarService:
             calendars = calendar_list.get('items', [])
             
             logger.info(f"Searching for calendar: '{calendar_name}'")
-            logger.info(f"Calendar name length: {len(calendar_name)} characters")
-            logger.info(f"Found {len(calendars)} calendar(s) accessible to service account")
-            
-            # Log all calendar names for debugging
-            if calendars:
-                logger.info("Available calendars:")
-                for cal in calendars:
-                    access_role = cal.get('accessRole', 'unknown')
-                    cal_name = cal.get('summary', 'N/A')
-                    logger.info(f"  - '{cal_name}' (Role: {access_role}, ID: {cal.get('id', 'N/A')[:30]}...)")
-            else:
-                logger.warning("⚠ No calendars found! Service account cannot see any calendars.")
-                logger.warning("⚠ Make sure you've shared your calendar with the service account email:")
-                email = self.service_account_email or 'barcelona-calendar-sync@barcelona-calendar-sync-482516.iam.gserviceaccount.com'
-                logger.warning(f"⚠   {email}")
-            
-            # Check if calendar already exists
-            # Prefer calendars where service account is NOT the owner (meaning it's a shared calendar from the user)
             matching_calendars = [cal for cal in calendars if cal.get('summary') == calendar_name]
             
             if matching_calendars:
-                # Prefer shared calendars (not owned by service account)
                 shared_calendars = [cal for cal in matching_calendars if cal.get('accessRole') != 'owner']
-                if shared_calendars:
-                    calendar_entry = shared_calendars[0]
-                    calendar_id = calendar_entry['id']
-                    calendar_access = calendar_entry.get('accessRole', 'unknown')
-                    logger.info(f"✓ Found shared calendar: '{calendar_name}' (ID: {calendar_id[:50]}...)")
-                    logger.info(f"  Calendar access role: {calendar_access}")
-                    logger.info(f"  Calendar timezone: {calendar_entry.get('timeZone', 'unknown')}")
-                    return calendar_id
-                else:
-                    # All matching calendars are owned by service account
-                    # This is fine - we can use it! Just make sure it's shared with the user
-                    calendar_entry = matching_calendars[0]
-                    calendar_id = calendar_entry['id']
-                    logger.info(f"✓ Found calendar '{calendar_name}' owned by service account (ID: {calendar_id[:50]}...)")
-                    logger.info(f"  This is expected - service account will manage this calendar")
-                    
-                    # Make sure calendar is shared with user email if provided
-                    user_email = os.getenv('USER_EMAIL', '')
-                    if user_email:
-                        try:
-                            # Check if already shared
-                            acl_list = self.service.acl().list(calendarId=calendar_id).execute()
-                            shared_with_user = any(
-                                entry.get('scope', {}).get('value') == user_email 
-                                for entry in acl_list.get('items', [])
-                            )
-                            
-                            if not shared_with_user:
-                                logger.info(f"Sharing calendar with: {user_email}")
-                                acl_rule = {
-                                    'scope': {
-                                        'type': 'user',
-                                        'value': user_email
-                                    },
-                                    'role': 'owner'  # Give owner so user can see and manage it
-                                }
-                                self.service.acl().insert(calendarId=calendar_id, body=acl_rule).execute()
-                                logger.info(f"✓ Shared calendar with: {user_email}")
-                            else:
-                                logger.info(f"Calendar already shared with: {user_email}")
-                        except Exception as e:
-                            logger.warning(f"Could not share calendar with {user_email}: {e}")
-                            logger.warning(f"Calendar is created but may not be visible to you. Calendar ID: {calendar_id}")
-                    
-                    return calendar_id
+                calendar_entry = shared_calendars[0] if shared_calendars else matching_calendars[0]
+                calendar_id = calendar_entry['id']
+                logger.info(f"Found calendar: '{calendar_name}'")
+                
+                # Ensure calendar is shared with user email
+                user_email = os.getenv('USER_EMAIL', '')
+                if user_email:
+                    try:
+                        acl_list = self.service.acl().list(calendarId=calendar_id).execute()
+                        shared_with_user = any(
+                            entry.get('scope', {}).get('value') == user_email 
+                            for entry in acl_list.get('items', [])
+                        )
+                        if not shared_with_user:
+                            acl_rule = {'scope': {'type': 'user', 'value': user_email}, 'role': 'owner'}
+                            self.service.acl().insert(calendarId=calendar_id, body=acl_rule).execute()
+                            logger.info(f"Shared calendar with: {user_email}")
+                    except Exception as e:
+                        logger.warning(f"Could not share calendar: {e}")
+                return calendar_id
             
             # Calendar not found - create it with service account and share with user
             logger.warning(f"Calendar '{calendar_name}' not found. Creating new calendar...")
@@ -431,7 +363,6 @@ def sync_barcelona_fixtures():
     # Get or create calendar
     calendar_id = calendar_service.get_or_create_calendar(CALENDAR_NAME)
     
-    # Fetch fixtures (increased limit to get more matches including cup competitions)
     fixtures = football_client.get_barcelona_fixtures(limit=100)
     
     if not fixtures:
@@ -440,34 +371,24 @@ def sync_barcelona_fixtures():
     
     logger.info(f"Processing {len(fixtures)} fixture(s)...")
     
-    # Process and add fixtures to calendar
     added_count = 0
     past_count = 0
     invalid_date_count = 0
-    
     current_time = datetime.now(timezone.utc)
-    logger.info(f"Current time (UTC): {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
     
     for fixture in fixtures:
-        # Only process future matches
         match_date = parse_fixture_datetime(fixture)
         if not match_date:
             invalid_date_count += 1
-            logger.debug(f"Skipping fixture with invalid date: {fixture.get('homeTeam', {}).get('name', '?')} vs {fixture.get('awayTeam', {}).get('name', '?')}")
             continue
         
-        # Only add future matches
         if match_date < current_time:
             past_count += 1
-            logger.debug(f"Skipping past match: {format_fixture_title(fixture)} on {match_date.strftime('%Y-%m-%d %H:%M')}")
             continue
         
         title = format_fixture_title(fixture)
         description = format_fixture_description(fixture)
-        
-        # Get venue if available
-        venue = fixture.get('venue', '')
-        location = venue if venue else ''
+        location = fixture.get('venue', '')
         
         event_id = calendar_service.add_event(
             calendar_id=calendar_id,
@@ -479,9 +400,6 @@ def sync_barcelona_fixtures():
         
         if event_id:
             added_count += 1
-        else:
-            # Event already exists or failed to add
-            pass
     
     logger.info("=" * 60)
     logger.info(f"Sync Summary:")
