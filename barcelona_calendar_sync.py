@@ -52,18 +52,20 @@ class FootballAPIClient:
         if api_key:
             self.headers['X-Auth-Token'] = api_key
     
-    def get_barcelona_fixtures(self, limit: int = 50) -> List[Dict]:
+    def get_barcelona_fixtures(self, limit: int = 100) -> List[Dict]:
         """
         Fetch Barcelona fixtures from the API
-        Returns a list of fixture dictionaries
+        Returns a list of fixture dictionaries (includes all competitions)
         """
         try:
             # Try to get Barcelona fixtures
             # Using football-data.org API format
+            # Note: This endpoint returns matches from all competitions (league, cups, etc.)
             url = f"{self.api_base}/teams/{BARCELONA_TEAM_ID}/matches"
+            # Don't filter by status - we want all matches (past and future) so we can filter by date ourselves
             params = {'limit': limit}
             
-            logger.info(f"Fetching fixtures from {url}")
+            logger.info(f"Fetching fixtures from {url} (limit: {limit})")
             response = requests.get(url, headers=self.headers, params=params, timeout=10)
             
             if response.status_code == 200:
@@ -422,8 +424,8 @@ def sync_barcelona_fixtures():
     # Get or create calendar
     calendar_id = calendar_service.get_or_create_calendar(CALENDAR_NAME)
     
-    # Fetch fixtures
-    fixtures = football_client.get_barcelona_fixtures(limit=50)
+    # Fetch fixtures (increased limit to get more matches including cup competitions)
+    fixtures = football_client.get_barcelona_fixtures(limit=100)
     
     if not fixtures:
         logger.warning("No fixtures found. Check API key and connection.")
