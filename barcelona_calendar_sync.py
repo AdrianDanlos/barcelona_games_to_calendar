@@ -116,8 +116,10 @@ class GoogleCalendarService:
         self.credentials_file = credentials_file
         self.token_file = token_file
         self.service_account_file = service_account_file or os.getenv('GOOGLE_SERVICE_ACCOUNT_FILE')
+        self.service_account_email = None
         self.service = None
         self._authenticate()
+        self._load_service_account_email()
     
     def _authenticate(self):
         """Authenticate with Google Calendar API"""
