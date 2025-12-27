@@ -175,16 +175,34 @@ class GoogleCalendarService:
             if calendars:
                 logger.info("Available calendars:")
                 for cal in calendars:
-                    logger.info(f"  - '{cal.get('summary', 'N/A')}' (ID: {cal.get('id', 'N/A')[:20]}...)")
+                    access_role = cal.get('accessRole', 'unknown')
+                    cal_name = cal.get('summary', 'N/A')
+                    logger.info(f"  - '{cal_name}' (Role: {access_role}, ID: {cal.get('id', 'N/A')[:30]}...)")
             
             # Check if calendar already exists
-            for calendar_entry in calendars:
-                if calendar_entry['summary'] == calendar_name:
+            # Prefer calendars where service account is NOT the owner (meaning it's a shared calendar from the user)
+            matching_calendars = [cal for cal in calendars if cal.get('summary') == calendar_name]
+            
+            if matching_calendars:
+                # Prefer shared calendars (not owned by service account)
+                shared_calendars = [cal for cal in matching_calendars if cal.get('accessRole') != 'owner']
+                if shared_calendars:
+                    calendar_entry = shared_calendars[0]
                     calendar_id = calendar_entry['id']
                     calendar_access = calendar_entry.get('accessRole', 'unknown')
-                    logger.info(f"✓ Found existing calendar: '{calendar_name}' (ID: {calendar_id[:50]}...)")
+                    logger.info(f"✓ Found shared calendar: '{calendar_name}' (ID: {calendar_id[:50]}...)")
                     logger.info(f"  Calendar access role: {calendar_access}")
                     logger.info(f"  Calendar timezone: {calendar_entry.get('timeZone', 'unknown')}")
+                    return calendar_id
+                else:
+                    # All matching calendars are owned by service account - warn user
+                    calendar_entry = matching_calendars[0]
+                    calendar_id = calendar_entry['id']
+                    logger.warning(f"⚠ Found calendar '{calendar_name}' but service account is the OWNER!")
+                    logger.warning(f"⚠ This means the service account created this calendar, not your actual calendar.")
+                    logger.warning(f"⚠ Please share your calendar '{calendar_name}' with the service account email.")
+                    logger.warning(f"⚠ Then delete this calendar: {calendar_id}")
+                    logger.info(f"Using calendar (ID: {calendar_id[:50]}...) but events won't be visible to you!")
                     return calendar_id
             
             # Calendar not found - create new one
