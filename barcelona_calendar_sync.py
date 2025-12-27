@@ -163,14 +163,17 @@ class GoogleCalendarService:
     
     def _load_service_account_email(self):
         """Load service account email from credentials file"""
+        self.service_account_email = None
         try:
             if self.service_account_file and os.path.exists(self.service_account_file):
                 with open(self.service_account_file, 'r') as f:
                     creds_data = json.load(f)
                     self.service_account_email = creds_data.get('client_email', '')
-                    logger.info(f"Service account email: {self.service_account_email}")
+                    if self.service_account_email:
+                        logger.info(f"Service account email: {self.service_account_email}")
         except Exception as e:
             logger.debug(f"Could not load service account email: {e}")
+            self.service_account_email = None
     
     def get_or_create_calendar(self, calendar_name: str) -> str:
         """Get existing calendar ID or create a new calendar"""
