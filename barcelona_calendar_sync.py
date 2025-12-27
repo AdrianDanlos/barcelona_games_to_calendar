@@ -181,7 +181,10 @@ class GoogleCalendarService:
             for calendar_entry in calendars:
                 if calendar_entry['summary'] == calendar_name:
                     calendar_id = calendar_entry['id']
-                    logger.info(f"✓ Found existing calendar: '{calendar_name}' (ID: {calendar_id})")
+                    calendar_access = calendar_entry.get('accessRole', 'unknown')
+                    logger.info(f"✓ Found existing calendar: '{calendar_name}' (ID: {calendar_id[:50]}...)")
+                    logger.info(f"  Calendar access role: {calendar_access}")
+                    logger.info(f"  Calendar timezone: {calendar_entry.get('timeZone', 'unknown')}")
                     return calendar_id
             
             # Calendar not found - create new one
@@ -251,7 +254,9 @@ class GoogleCalendarService:
             }
             
             event = self.service.events().insert(calendarId=calendar_id, body=event).execute()
-            logger.info(f"Added event: {title} on {start_time.strftime('%Y-%m-%d %H:%M')}")
+            event_link = event.get('htmlLink', 'N/A')
+            logger.info(f"✓ Added event: {title} on {start_time.strftime('%Y-%m-%d %H:%M')} UTC")
+            logger.debug(f"  Event link: {event_link}")
             return event.get('id')
             
         except HttpError as error:
