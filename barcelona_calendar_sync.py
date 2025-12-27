@@ -190,10 +190,7 @@ class GoogleCalendarService:
                 return calendar_id
             
             # Calendar not found - create it with service account and share with user
-            logger.warning(f"Calendar '{calendar_name}' not found. Creating new calendar...")
-            logger.info(f"Note: Service accounts can't always see calendars shared with them.")
-            logger.info(f"Creating calendar owned by service account, then sharing it with your email.")
-            
+            logger.info(f"Calendar '{calendar_name}' not found. Creating new calendar...")
             calendar = {
                 'summary': calendar_name,
                 'description': 'Barcelona FC football matches automatically synced',
@@ -201,29 +198,16 @@ class GoogleCalendarService:
             }
             created_calendar = self.service.calendars().insert(body=calendar).execute()
             calendar_id = created_calendar['id']
-            logger.info(f"✓ Created calendar '{calendar_name}' (ID: {calendar_id[:50]}...)")
+            logger.info(f"Created calendar: '{calendar_name}'")
             
-            # Share calendar with user email if provided
             user_email = os.getenv('USER_EMAIL', '')
             if user_email:
                 try:
-                    acl_rule = {
-                        'scope': {
-                            'type': 'user',
-                            'value': user_email
-                        },
-                        'role': 'owner'  # Give owner so user can see and manage it
-                    }
+                    acl_rule = {'scope': {'type': 'user', 'value': user_email}, 'role': 'owner'}
                     self.service.acl().insert(calendarId=calendar_id, body=acl_rule).execute()
-                    logger.info(f"✓ Shared calendar with: {user_email}")
+                    logger.info(f"Shared calendar with: {user_email}")
                 except Exception as e:
-                    logger.warning(f"Could not share calendar with {user_email}: {e}")
-                    logger.warning(f"You may need to manually access this calendar using its ID")
-            else:
-                logger.warning(f"⚠ USER_EMAIL not set. Calendar created but may not be visible to you.")
-                logger.warning(f"⚠ Add USER_EMAIL secret in GitHub Actions to share calendar automatically.")
-                logger.warning(f"⚠ Calendar ID: {calendar_id}")
-            
+                    logger.warning(f"Could not share calendar: {e}")
             return calendar_id
             
         except HttpError as error:
