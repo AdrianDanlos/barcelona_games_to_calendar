@@ -413,6 +413,7 @@ def sync_barcelona_fixtures():
     logger.info(f"Processing {len(fixtures)} fixture(s)...")
 
     added_count = 0
+    updated_count = 0
     past_count = 0
     invalid_date_count = 0
     current_time = datetime.now(timezone.utc)
@@ -431,6 +432,12 @@ def sync_barcelona_fixtures():
         description = format_fixture_description(fixture)
         location = fixture.get("venue", "")
 
+        # Check if event exists before calling add_or_update_event
+        existing_event = calendar_service.find_existing_event(
+            calendar_id, title, match_date
+        )
+        was_existing = existing_event is not None
+
         event_id = calendar_service.add_or_update_event(
             calendar_id=calendar_id,
             title=title,
@@ -440,17 +447,18 @@ def sync_barcelona_fixtures():
         )
 
         if event_id:
-            added_count += 1
+            if was_existing:
+                updated_count += 1
+            else:
+                added_count += 1
 
-    existing_skipped = len(fixtures) - added_count - past_count - invalid_date_count
     logger.info("=" * 60)
     logger.info("Sync Summary:")
     logger.info(f"  - Total fixtures fetched: {len(fixtures)}")
     logger.info(f"  - Events added: {added_count}")
+    logger.info(f"  - Events updated/replaced: {updated_count}")
     logger.info(f"  - Past matches skipped: {past_count}")
     logger.info(f"  - Invalid date skipped: {invalid_date_count}")
-    if existing_skipped > 0:
-        logger.info(f"  - Already existing skipped: {existing_skipped}")
     logger.info("=" * 60)
 
     if added_count == 0 and past_count > 0:
