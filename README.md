@@ -59,14 +59,6 @@ These competitions could be fetched in the future by scraping the [official FC B
 
 If you encounter issues with the football-data.org API provider, an alternative option is [football.json](https://github.com/openfootball/football.json), which provides La Liga data in JSON format. However, this only covers La Liga matches, not Champions League or other competitions.
 
-## How It Works
-
-1. Fetches upcoming Barcelona fixtures from the API
-2. Creates/uses a calendar in Google Calendar
-3. Adds each match as a calendar event
-4. Skips duplicates and past matches
-5. Runs monthly to catch schedule updates
-
 ## Sharing Your Calendar with Others
 
 Want to share the Barcelona matches calendar with friends or family?
@@ -88,31 +80,3 @@ Want to share the Barcelona matches calendar with friends or family?
 4. Share the URL - others can subscribe using "Add calendar" > "From URL"
 
 **Note**: The calendar is automatically shared with the email in `USER_EMAIL`. Others will need you to share it with them as described above.
-
-## Local Setup (Optional)
-
-If you want to run locally instead of GitHub Actions:
-
-```bash
-pip install -r requirements.txt
-```
-
-Create `credentials.json` from Google Cloud Console (OAuth client ID for desktop app), then:
-
-```bash
-python barcelona_calendar_sync.py
-```
-
-## Troubleshooting
-
-**No fixtures found**: Check your API key is correct. Get one at https://www.football-data.org/client/register
-
-**Invalid API key**: Make sure `FOOTBALL_API_KEY` secret is set correctly in GitHub Actions.
-
-**Events not showing**: Make sure `USER_EMAIL` secret is set correctly. The calendar is automatically shared with that email.
-
-**Workflow fails**: Check GitHub Actions logs for detailed error messages.
-
-## License
-
-MIT

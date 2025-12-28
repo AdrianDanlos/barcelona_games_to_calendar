@@ -1,3 +1,4 @@
+# flake8: noqa: E501
 """
 Barcelona FC Calendar Sync Service
 Automatically adds Barcelona football games to Google Calendar
@@ -34,6 +35,13 @@ SCOPES = ["https://www.googleapis.com/auth/calendar"]
 # Using football-data.org: Barcelona team ID is 81 (La Liga)
 BARCELONA_TEAM_ID = 81
 
+# Calendar configuration
+CALENDAR_TIMEZONE = "Europe/Madrid"
+CALENDAR_DESCRIPTION = (
+    "Barcelona FC football matches of La Liga and Champions League "
+    "automatically synced (Copa del rey, Supercopa, etc... are not included)"
+)
+
 # Configuration
 CALENDAR_NAME = os.getenv("CALENDAR_NAME", "")
 if not CALENDAR_NAME:
@@ -60,12 +68,6 @@ class FootballAPIClient:
 
     def get_barcelona_fixtures(self, limit: int = 100) -> List[Dict]:
         """Fetch Barcelona fixtures from the API"""
-        if not self.api_key:
-            logger.error(
-                "API key is required. Set FOOTBALL_API_KEY environment variable."
-            )
-            return []
-
         try:
             url = f"{self.api_base}/teams/{BARCELONA_TEAM_ID}/matches"
             params = {"limit": limit}
@@ -78,18 +80,19 @@ class FootballAPIClient:
                 fixtures = data.get("matches", [])
                 logger.info(f"Successfully fetched {len(fixtures)} fixtures")
                 return fixtures
-            elif response.status_code == 401:
-                logger.error("Invalid API key. Please check your FOOTBALL_API_KEY.")
-            elif response.status_code == 403:
-                logger.error(
-                    "API key does not have access. Check your API key permissions."
+
+            # Handle error status codes
+            error_messages = {
+                401: "Invalid API key. Please check your FOOTBALL_API_KEY.",
+                403: "API key does not have access. Check your API key permissions.",
+                429: "Rate limit exceeded. Please wait before trying again.",
+            }
+            logger.error(
+                error_messages.get(
+                    response.status_code,
+                    f"API request failed with status {response.status_code}: {response.text[:500]}",
                 )
-            elif response.status_code == 429:
-                logger.error("Rate limit exceeded. Please wait before trying again.")
-            else:
-                logger.error(
-                    f"API request failed with status {response.status_code}: {response.text[:500]}"
-                )
+            )
             return []
 
         except Exception as e:
@@ -163,18 +166,42 @@ class GoogleCalendarService:
     def _load_service_account_email(self):
         """Load service account email from credentials file"""
         self.service_account_email = None
+        if not (self.service_account_file and os.path.exists(self.service_account_file)):
+            return
+
         try:
-            if self.service_account_file and os.path.exists(self.service_account_file):
-                with open(self.service_account_file, "r") as f:
-                    creds_data = json.load(f)
-                    self.service_account_email = creds_data.get("client_email", "")
-                    if self.service_account_email:
-                        logger.info(
-                            f"Service account email: {self.service_account_email}"
-                        )
+            with open(self.service_account_file, "r") as f:
+                creds_data = json.load(f)
+                self.service_account_email = creds_data.get("client_email", "")
+                if self.service_account_email:
+                    logger.info(
+                        f"Service account email: {self.service_account_email}"
+                    )
         except Exception as e:
             logger.debug(f"Could not load service account email: {e}")
-            self.service_account_email = None
+
+    def _share_calendar_with_user(self, calendar_id: str, user_email: str) -> None:
+        """Share calendar with user email if not already shared"""
+        if not user_email:
+            return
+
+        try:
+            acl_list = self.service.acl().list(calendarId=calendar_id).execute()
+            shared_with_user = any(
+                entry.get("scope", {}).get("value") == user_email
+                for entry in acl_list.get("items", [])
+            )
+            if not shared_with_user:
+                acl_rule = {
+                    "scope": {"type": "user", "value": user_email},
+                    "role": "owner",
+                }
+                self.service.acl().insert(
+                    calendarId=calendar_id, body=acl_rule
+                ).execute()
+                logger.info(f"Shared calendar with: {user_email}")
+        except Exception as e:
+            logger.warning(f"Could not share calendar: {e}")
 
     def get_or_create_calendar(self, calendar_name: str) -> str:
         """Get existing calendar ID or create a new calendar"""
@@ -199,29 +226,7 @@ class GoogleCalendarService:
                 )
                 calendar_id = calendar_entry["id"]
                 logger.info(f"Found calendar: '{calendar_name}'")
-
-                # Ensure calendar is shared with user email
-                user_email = os.getenv("USER_EMAIL", "")
-                if user_email:
-                    try:
-                        acl_list = (
-                            self.service.acl().list(calendarId=calendar_id).execute()
-                        )
-                        shared_with_user = any(
-                            entry.get("scope", {}).get("value") == user_email
-                            for entry in acl_list.get("items", [])
-                        )
-                        if not shared_with_user:
-                            acl_rule = {
-                                "scope": {"type": "user", "value": user_email},
-                                "role": "owner",
-                            }
-                            self.service.acl().insert(
-                                calendarId=calendar_id, body=acl_rule
-                            ).execute()
-                            logger.info(f"Shared calendar with: {user_email}")
-                    except Exception as e:
-                        logger.warning(f"Could not share calendar: {e}")
+                self._share_calendar_with_user(calendar_id, USER_EMAIL)
                 return calendar_id
 
             # Calendar not found - create it with service account and share with user
@@ -230,29 +235,13 @@ class GoogleCalendarService:
             )
             calendar = {
                 "summary": calendar_name,
-                "description": (
-                    "Barcelona FC football matches of La Liga and Champions League "
-                    "automatically synced (Copa del rey, Supercopa, etc... are not included)"
-                ),
-                "timeZone": "Europe/Madrid",
+                "description": CALENDAR_DESCRIPTION,
+                "timeZone": CALENDAR_TIMEZONE,
             }
             created_calendar = self.service.calendars().insert(body=calendar).execute()
             calendar_id = created_calendar["id"]
             logger.info(f"Created calendar: '{calendar_name}'")
-
-            user_email = os.getenv("USER_EMAIL", "")
-            if user_email:
-                try:
-                    acl_rule = {
-                        "scope": {"type": "user", "value": user_email},
-                        "role": "owner",
-                    }
-                    self.service.acl().insert(
-                        calendarId=calendar_id, body=acl_rule
-                    ).execute()
-                    logger.info(f"Shared calendar with: {user_email}")
-                except Exception as e:
-                    logger.warning(f"Could not share calendar: {e}")
+            self._share_calendar_with_user(calendar_id, USER_EMAIL)
             return calendar_id
 
         except HttpError as error:
@@ -303,20 +292,19 @@ class GoogleCalendarService:
                 logger.info(f"Event already exists: {title}")
                 return None
 
-            # Create event
+            # Create event (2-hour duration)
+            end_time = start_time.replace(hour=start_time.hour + 2)
             event = {
                 "summary": title,
                 "description": description,
                 "location": location,
                 "start": {
                     "dateTime": start_time.isoformat(),
-                    "timeZone": "Europe/Madrid",
+                    "timeZone": CALENDAR_TIMEZONE,
                 },
                 "end": {
-                    "dateTime": (
-                        start_time.replace(hour=start_time.hour + 2)
-                    ).isoformat(),
-                    "timeZone": "Europe/Madrid",
+                    "dateTime": end_time.isoformat(),
+                    "timeZone": CALENDAR_TIMEZONE,
                 },
             }
 
@@ -339,21 +327,16 @@ class GoogleCalendarService:
 
 def parse_fixture_datetime(fixture: Dict) -> Optional[datetime]:
     """Parse fixture datetime from API response"""
+    date_str = fixture.get("utcDate") or fixture.get("date")
+    if not date_str:
+        return None
+
     try:
-        # Handle different API formats
-        if "utcDate" in fixture:
-            dt_str = fixture["utcDate"]
-            # Parse ISO format: 2024-01-15T20:00:00Z
-            dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
-            return dt
-        elif "date" in fixture and "utcDate" not in fixture:
-            # Fallback format
-            date_str = fixture["date"]
-            dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-            return dt
-    except (KeyError, ValueError) as e:
+        # Parse ISO format: 2024-01-15T20:00:00Z
+        return datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+    except ValueError as e:
         logger.warning(f"Could not parse datetime from fixture: {e}")
-    return None
+        return None
 
 
 def format_fixture_title(fixture: Dict) -> str:
@@ -386,14 +369,12 @@ def format_fixture_description(fixture: Dict) -> str:
     try:
         competition = fixture.get("competition", {}).get("name", "")
         matchday = fixture.get("matchday")
-
-        desc = f"Barcelona FC Match"
+        parts = ["Barcelona FC Match"]
         if competition:
-            desc += f"\nCompetition: {competition}"
+            parts.append(f"Competition: {competition}")
         if matchday:
-            desc += f"\nMatchday: {matchday}"
-
-        return desc
+            parts.append(f"Matchday: {matchday}")
+        return "\n".join(parts)
     except Exception:
         return "Barcelona FC Match"
 
@@ -450,14 +431,15 @@ def sync_barcelona_fixtures():
         if event_id:
             added_count += 1
 
+    existing_skipped = (
+        len(fixtures) - added_count - past_count - invalid_date_count
+    )
     logger.info("=" * 60)
-    logger.info(f"Sync Summary:")
+    logger.info("Sync Summary:")
     logger.info(f"  - Total fixtures fetched: {len(fixtures)}")
     logger.info(f"  - Events added: {added_count}")
     logger.info(f"  - Past matches skipped: {past_count}")
     logger.info(f"  - Invalid date skipped: {invalid_date_count}")
-    skipped_total = len(fixtures) - added_count
-    existing_skipped = skipped_total - past_count - invalid_date_count
     if existing_skipped > 0:
         logger.info(f"  - Already existing skipped: {existing_skipped}")
     logger.info("=" * 60)
