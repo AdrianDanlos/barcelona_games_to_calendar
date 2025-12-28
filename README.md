@@ -88,7 +88,9 @@ python barcelona_calendar_sync.py
 
 ## Troubleshooting
 
-**No fixtures found**: Check API connection. Free tier has rate limits (10 requests/minute).
+**No fixtures found**: Check your API key is correct. Get one at https://www.football-data.org/client/register
+
+**Invalid API key**: Make sure `FOOTBALL_API_KEY` secret is set correctly in GitHub Actions.
 
 **Events not showing**: Make sure `USER_EMAIL` secret is set correctly. The calendar is automatically shared with that email.
 
