@@ -32,8 +32,8 @@ Go to your repo: Settings > Secrets and variables > Actions > New repository sec
 
 - **`GOOGLE_SERVICE_ACCOUNT_JSON`** (Required): Paste entire contents of the JSON file
 - **`USER_EMAIL`** (Required): Your Google Calendar email (e.g., `your-email@gmail.com`)
+- **`FOOTBALL_API_KEY`** (Required): Get your API key from https://www.football-data.org/client/register
 - **`CALENDAR_NAME`** (Optional): Calendar name (defaults to "Barcelona FC Games")
-- **`FOOTBALL_API_KEY`** (Optional): API key for paid tier (free tier works fine)
 
 ### 3. Run It
 

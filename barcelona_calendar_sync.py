@@ -37,6 +37,11 @@ BARCELONA_TEAM_ID = 81
 # Configuration
 CALENDAR_NAME = os.getenv("CALENDAR_NAME") or "Barcelona FC Games"
 FOOTBALL_API_KEY = os.getenv("FOOTBALL_API_KEY", "")
+if not FOOTBALL_API_KEY:
+    raise ValueError(
+        "FOOTBALL_API_KEY environment variable is required. "
+        "Get your API key from https://www.football-data.org/client/register"
+    )
 FOOTBALL_API_BASE = os.getenv("FOOTBALL_API_BASE", "https://api.football-data.org/v4")
 USER_EMAIL = os.getenv("USER_EMAIL", "")
 
@@ -53,6 +58,10 @@ class FootballAPIClient:
 
     def get_barcelona_fixtures(self, limit: int = 100) -> List[Dict]:
         """Fetch Barcelona fixtures from the API"""
+        if not self.api_key:
+            logger.error("API key is required. Set FOOTBALL_API_KEY environment variable.")
+            return []
+            
         try:
             url = f"{self.api_base}/teams/{BARCELONA_TEAM_ID}/matches"
             params = {"limit": limit}
@@ -65,28 +74,21 @@ class FootballAPIClient:
                 fixtures = data.get("matches", [])
                 logger.info(f"Successfully fetched {len(fixtures)} fixtures")
                 return fixtures
+            elif response.status_code == 401:
+                logger.error("Invalid API key. Please check your FOOTBALL_API_KEY.")
             elif response.status_code == 403:
-                logger.warning("API returned 403. Trying without auth for free tier...")
-                response_no_auth = requests.get(url, params=params, timeout=10)
-                if response_no_auth.status_code == 200:
-                    data = response_no_auth.json()
-                    fixtures = data.get("matches", [])
-                    if fixtures:
-                        logger.info(f"Fetched {len(fixtures)} fixtures (free tier)")
-                        return fixtures
-                elif response_no_auth.status_code == 429:
-                    logger.error(
-                        "Rate limit exceeded. Please wait before trying again."
-                    )
+                logger.error(
+                    "API key does not have access. Check your API key permissions."
+                )
             elif response.status_code == 429:
                 logger.error(
-                    "Rate limit exceeded (429). Please wait before trying again."
+                    "Rate limit exceeded. Please wait before trying again."
                 )
             else:
                 logger.error(
                     f"API request failed with status {response.status_code}: {response.text[:500]}"
                 )
-                return []
+            return []
 
         except Exception as e:
             logger.error(f"Error fetching fixtures: {str(e)}", exc_info=True)
