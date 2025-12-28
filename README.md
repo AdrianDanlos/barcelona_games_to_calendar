@@ -37,7 +37,7 @@ Go to your repo: Settings > Secrets and variables > Actions > New repository sec
 
 ### 3. Run It
 
-The workflow runs automatically on the 1st of each month, or trigger manually:
+The workflow runs automatically every 15 days (1st and 16th of each month), or trigger manually:
 - Go to Actions tab > "Sync Barcelona Calendar" > Run workflow
 
 **Note**: The calendar is created automatically and shared with your email. No manual calendar creation needed!
