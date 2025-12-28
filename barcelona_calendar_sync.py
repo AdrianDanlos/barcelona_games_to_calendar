@@ -166,7 +166,9 @@ class GoogleCalendarService:
     def _load_service_account_email(self):
         """Load service account email from credentials file"""
         self.service_account_email = None
-        if not (self.service_account_file and os.path.exists(self.service_account_file)):
+        if not (
+            self.service_account_file and os.path.exists(self.service_account_file)
+        ):
             return
 
         try:
@@ -174,9 +176,7 @@ class GoogleCalendarService:
                 creds_data = json.load(f)
                 self.service_account_email = creds_data.get("client_email", "")
                 if self.service_account_email:
-                    logger.info(
-                        f"Service account email: {self.service_account_email}"
-                    )
+                    logger.info(f"Service account email: {self.service_account_email}")
         except Exception as e:
             logger.debug(f"Could not load service account email: {e}")
 
@@ -431,9 +431,7 @@ def sync_barcelona_fixtures():
         if event_id:
             added_count += 1
 
-    existing_skipped = (
-        len(fixtures) - added_count - past_count - invalid_date_count
-    )
+    existing_skipped = len(fixtures) - added_count - past_count - invalid_date_count
     logger.info("=" * 60)
     logger.info("Sync Summary:")
     logger.info(f"  - Total fixtures fetched: {len(fixtures)}")
