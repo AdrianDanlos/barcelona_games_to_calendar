@@ -230,7 +230,10 @@ class GoogleCalendarService:
             )
             calendar = {
                 "summary": calendar_name,
-                "description": "Barcelona FC football matches of La Liga and Champions League automatically synced (Copa del rey, Supercopa, etc... are not included)",
+                "description": (
+                    "Barcelona FC football matches of La Liga and Champions League "
+                    "automatically synced (Copa del rey, Supercopa, etc... are not included)"
+                ),
                 "timeZone": "Europe/Madrid",
             }
             created_calendar = self.service.calendars().insert(body=calendar).execute()
