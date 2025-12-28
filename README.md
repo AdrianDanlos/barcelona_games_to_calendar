@@ -7,7 +7,7 @@ Automatically syncs Barcelona football matches to your Google Calendar. Runs on 
 - ✅ Fetches Barcelona FC fixtures from football-data.org API
 - ✅ Adds matches to Google Calendar automatically
 - ✅ Prevents duplicate events
-- ✅ Runs monthly to catch schedule updates
+- ✅ Runs every 15 days to catch schedule updates
 - ✅ Works on GitHub Actions (no local setup needed)
 
 ## Quick Setup (GitHub Actions)
