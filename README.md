@@ -32,8 +32,8 @@ Go to your repo: Settings > Secrets and variables > Actions > New repository sec
 
 - **`GOOGLE_SERVICE_ACCOUNT_JSON`** (Required): Paste entire contents of the JSON file
 - **`USER_EMAIL`** (Required): Your Google Calendar email (e.g., `your-email@gmail.com`)
+- **`CALENDAR_NAME`** (Required): Calendar name for Barcelona matches
 - **`FOOTBALL_API_KEY`** (Required): Get your API key from https://www.football-data.org/client/register
-- **`CALENDAR_NAME`** (Optional): Calendar name (defaults to "Barcelona FC Games")
 
 ### 3. Run It
 
@@ -41,6 +41,23 @@ The workflow runs automatically on the 1st of each month, or trigger manually:
 - Go to Actions tab > "Sync Barcelona Calendar" > Run workflow
 
 **Note**: The calendar is created automatically and shared with your email. No manual calendar creation needed!
+
+## Data Coverage
+
+**Currently Supported:**
+- ✅ La Liga matches
+- ✅ UEFA Champions League matches
+
+**Not Included (but could be added in the future):**
+- ❌ Copa del Rey
+- ❌ Supercopa de España
+- ❌ Other cup competitions
+
+These competitions could be fetched in the future by scraping the [official FC Barcelona schedule page](https://www.fcbarcelona.com/en/football/first-team/schedule).
+
+## Alternative Data Sources
+
+If you encounter issues with the football-data.org API provider, an alternative option is [football.json](https://github.com/openfootball/football.json), which provides La Liga data in JSON format. However, this only covers La Liga matches, not Champions League or other competitions.
 
 ## How It Works
 

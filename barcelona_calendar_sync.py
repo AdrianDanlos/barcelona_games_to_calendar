@@ -35,7 +35,9 @@ SCOPES = ["https://www.googleapis.com/auth/calendar"]
 BARCELONA_TEAM_ID = 81
 
 # Configuration
-CALENDAR_NAME = os.getenv("CALENDAR_NAME") or "Barcelona FC Games"
+CALENDAR_NAME = os.getenv("CALENDAR_NAME", "")
+if not CALENDAR_NAME:
+    raise ValueError("CALENDAR_NAME environment variable is required.")
 FOOTBALL_API_KEY = os.getenv("FOOTBALL_API_KEY", "")
 if not FOOTBALL_API_KEY:
     raise ValueError(
@@ -59,9 +61,11 @@ class FootballAPIClient:
     def get_barcelona_fixtures(self, limit: int = 100) -> List[Dict]:
         """Fetch Barcelona fixtures from the API"""
         if not self.api_key:
-            logger.error("API key is required. Set FOOTBALL_API_KEY environment variable.")
+            logger.error(
+                "API key is required. Set FOOTBALL_API_KEY environment variable."
+            )
             return []
-            
+
         try:
             url = f"{self.api_base}/teams/{BARCELONA_TEAM_ID}/matches"
             params = {"limit": limit}
@@ -81,9 +85,7 @@ class FootballAPIClient:
                     "API key does not have access. Check your API key permissions."
                 )
             elif response.status_code == 429:
-                logger.error(
-                    "Rate limit exceeded. Please wait before trying again."
-                )
+                logger.error("Rate limit exceeded. Please wait before trying again.")
             else:
                 logger.error(
                     f"API request failed with status {response.status_code}: {response.text[:500]}"
@@ -228,7 +230,7 @@ class GoogleCalendarService:
             )
             calendar = {
                 "summary": calendar_name,
-                "description": "Barcelona FC football matches automatically synced",
+                "description": "Barcelona FC football matches of La Liga and Champions League automatically synced (Copa del rey, Supercopa, etc... are not included)",
                 "timeZone": "Europe/Madrid",
             }
             created_calendar = self.service.calendars().insert(body=calendar).execute()
