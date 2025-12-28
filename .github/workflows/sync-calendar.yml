@@ -2,8 +2,8 @@ name: Sync Barcelona Calendar
 
 on:
   schedule:
-    # Run on the 1st day of every month at 9 AM UTC
-    - cron: "0 9 1 * *"
+    # Run every 15 days at 9 AM UTC (1st and 16th of each month)
+    - cron: "0 9 1,16 * *"
   # Allow manual trigger from GitHub Actions UI
   workflow_dispatch:
 
