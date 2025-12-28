@@ -248,13 +248,14 @@ class GoogleCalendarService:
             logger.error(f"Error managing calendar: {error}")
             raise
 
-    def event_exists(
+    def find_existing_event(
         self, calendar_id: str, event_title: str, event_start: datetime
-    ) -> bool:
-        """Check if an event already exists in the calendar"""
+    ) -> Optional[Dict]:
+        """Find existing event by title on the same date. Returns event dict or None."""
         try:
-            time_min = event_start.isoformat()
-            time_max = (event_start.replace(hour=23, minute=59, second=59)).isoformat()
+            # Search for events on the same day
+            time_min = event_start.replace(hour=0, minute=0, second=0).isoformat()
+            time_max = event_start.replace(hour=23, minute=59, second=59).isoformat()
 
             events_result = (
                 self.service.events()
@@ -271,13 +272,13 @@ class GoogleCalendarService:
             events = events_result.get("items", [])
             for event in events:
                 if event.get("summary") == event_title:
-                    return True
-            return False
+                    return event
+            return None
         except HttpError as error:
             logger.error(f"Error checking existing events: {error}")
-            return False
+            return None
 
-    def add_event(
+    def add_or_update_event(
         self,
         calendar_id: str,
         title: str,
@@ -285,14 +286,12 @@ class GoogleCalendarService:
         description: str = "",
         location: str = "",
     ) -> Optional[str]:
-        """Add an event to the calendar"""
+        """Add or update (replace) an event in the calendar"""
         try:
             # Check if event already exists
-            if self.event_exists(calendar_id, title, start_time):
-                logger.info(f"Event already exists: {title}")
-                return None
+            existing_event = self.find_existing_event(calendar_id, title, start_time)
 
-            # Create event (2-hour duration)
+            # Prepare event data
             end_time = start_time.replace(hour=start_time.hour + 2)
             event = {
                 "summary": title,
@@ -308,20 +307,32 @@ class GoogleCalendarService:
                 },
             }
 
-            event = (
-                self.service.events()
-                .insert(calendarId=calendar_id, body=event)
-                .execute()
-            )
-            event_link = event.get("htmlLink", "N/A")
-            logger.info(
-                f"✓ Added event: {title} on {start_time.strftime('%Y-%m-%d %H:%M')} UTC"
-            )
-            logger.debug(f"  Event link: {event_link}")
-            return event.get("id")
+            if existing_event:
+                # Update existing event (replace with new data)
+                event_id = existing_event.get("id")
+                updated_event = (
+                    self.service.events()
+                    .update(calendarId=calendar_id, eventId=event_id, body=event)
+                    .execute()
+                )
+                logger.info(
+                    f"✓ Updated event: {title} on {start_time.strftime('%Y-%m-%d %H:%M')} UTC"
+                )
+                return updated_event.get("id")
+            else:
+                # Create new event
+                new_event = (
+                    self.service.events()
+                    .insert(calendarId=calendar_id, body=event)
+                    .execute()
+                )
+                logger.info(
+                    f"✓ Added event: {title} on {start_time.strftime('%Y-%m-%d %H:%M')} UTC"
+                )
+                return new_event.get("id")
 
         except HttpError as error:
-            logger.error(f"Error adding event: {error}")
+            logger.error(f"Error adding/updating event: {error}")
             return None
 
 
@@ -420,7 +431,7 @@ def sync_barcelona_fixtures():
         description = format_fixture_description(fixture)
         location = fixture.get("venue", "")
 
-        event_id = calendar_service.add_event(
+        event_id = calendar_service.add_or_update_event(
             calendar_id=calendar_id,
             title=title,
             start_time=match_date,
