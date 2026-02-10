@@ -416,6 +416,7 @@ def sync_barcelona_fixtures():
     updated_count = 0
     past_count = 0
     invalid_date_count = 0
+    tba_count = 0  # 00:00 UTC = time TBA, skip add/update
     current_time = datetime.now(timezone.utc)
 
     for fixture in fixtures:
@@ -426,6 +427,11 @@ def sync_barcelona_fixtures():
 
         if match_date < current_time:
             past_count += 1
+            continue
+
+        # Don't add or update events when time is 00:00 UTC (TBA / unscheduled)
+        if match_date.hour == 0 and match_date.minute == 0:
+            tba_count += 1
             continue
 
         title = format_fixture_title(fixture)
@@ -459,6 +465,7 @@ def sync_barcelona_fixtures():
     logger.info(f"  - Events updated/replaced: {updated_count}")
     logger.info(f"  - Past matches skipped: {past_count}")
     logger.info(f"  - Invalid date skipped: {invalid_date_count}")
+    logger.info(f"  - 00:00 UTC (TBA) skipped: {tba_count}")
     logger.info("=" * 60)
 
     if added_count == 0 and past_count > 0:
