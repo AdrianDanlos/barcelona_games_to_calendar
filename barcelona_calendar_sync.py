@@ -7,7 +7,7 @@ Automatically adds Barcelona football games to Google Calendar
 import os
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Optional
 
 import requests
@@ -278,6 +278,41 @@ class GoogleCalendarService:
             logger.error(f"Error checking existing events: {error}")
             return None
 
+    def find_existing_event_by_fixture_id(
+        self, calendar_id: str, fixture_id: str
+    ) -> Optional[Dict]:
+        """Find existing event by stable fixture identifier."""
+        try:
+            events_result = (
+                self.service.events()
+                .list(
+                    calendarId=calendar_id,
+                    privateExtendedProperty=f"fixture_id={fixture_id}",
+                    singleEvents=True,
+                    maxResults=1,
+                )
+                .execute()
+            )
+            events = events_result.get("items", [])
+            return events[0] if events else None
+        except HttpError as error:
+            logger.error(f"Error checking event by fixture ID: {error}")
+            return None
+
+    def find_existing_event_for_fixture(
+        self,
+        calendar_id: str,
+        fixture_id: Optional[str],
+        event_title: str,
+        event_start: datetime,
+    ) -> Optional[Dict]:
+        """Find existing event, preferring fixture ID with title/date fallback."""
+        if fixture_id:
+            event = self.find_existing_event_by_fixture_id(calendar_id, fixture_id)
+            if event:
+                return event
+        return self.find_existing_event(calendar_id, event_title, event_start)
+
     def add_or_update_event(
         self,
         calendar_id: str,
@@ -285,14 +320,22 @@ class GoogleCalendarService:
         start_time: datetime,
         description: str = "",
         location: str = "",
+        fixture_id: Optional[str] = None,
+        existing_event: Optional[Dict] = None,
     ) -> Optional[str]:
         """Add or update (replace) an event in the calendar"""
         try:
             # Check if event already exists
-            existing_event = self.find_existing_event(calendar_id, title, start_time)
+            if existing_event is None:
+                existing_event = self.find_existing_event_for_fixture(
+                    calendar_id=calendar_id,
+                    fixture_id=fixture_id,
+                    event_title=title,
+                    event_start=start_time,
+                )
 
             # Prepare event data
-            end_time = start_time.replace(hour=start_time.hour + 2)
+            end_time = start_time + timedelta(hours=2)
             event = {
                 "summary": title,
                 "description": description,
@@ -306,6 +349,13 @@ class GoogleCalendarService:
                     "timeZone": CALENDAR_TIMEZONE,
                 },
             }
+            if fixture_id:
+                event["extendedProperties"] = {
+                    "private": {
+                        "source": "football-data",
+                        "fixture_id": fixture_id,
+                    }
+                }
 
             if existing_event:
                 # Update existing event (replace with new data)
@@ -437,10 +487,14 @@ def sync_barcelona_fixtures():
         title = format_fixture_title(fixture)
         description = format_fixture_description(fixture)
         location = fixture.get("venue", "")
+        fixture_id = str(fixture.get("id", "")) or None
 
         # Check if event exists before calling add_or_update_event
-        existing_event = calendar_service.find_existing_event(
-            calendar_id, title, match_date
+        existing_event = calendar_service.find_existing_event_for_fixture(
+            calendar_id=calendar_id,
+            fixture_id=fixture_id,
+            event_title=title,
+            event_start=match_date,
         )
         was_existing = existing_event is not None
 
@@ -450,6 +504,8 @@ def sync_barcelona_fixtures():
             start_time=match_date,
             description=description,
             location=location,
+            fixture_id=fixture_id,
+            existing_event=existing_event,
         )
 
         if event_id:
